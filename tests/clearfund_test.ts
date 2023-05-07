@@ -93,13 +93,13 @@ Clarinet.test({
             Tx.contractCall('clearfund', 'launch', [types.utf8('Name'), types.buff(''), types.utf8('https://example.com'), types.uint(10000), types.uint(2), types.uint(100)], wallet_1)
         ]);
         const result2 = block2.receipts[0].result;
-        result.expectErr().expectUint(101);
+        result2.expectErr().expectUint(101);
 
         let block3 = chain.mineBlock([
             Tx.contractCall('clearfund', 'launch', [types.utf8('Name'), types.buff('This is a campaign that I made.'), types.utf8(''), types.uint(10000), types.uint(2), types.uint(100)], wallet_1)
         ]);
         const result3 = block3.receipts[0].result;
-        result.expectErr().expectUint(101);
+        result3.expectErr().expectUint(101);
     },
 });
 
@@ -149,7 +149,7 @@ Clarinet.test({
 });
 
 // CANCELING A CAMPAIGN
-// a campign owner should be able to cancel a campaign before it starts
+// a campaign owner should be able to cancel a campaign before it starts
 Clarinet.test({
     name: "a campign owner should be able to cancel a campaign before it starts",
     async fn(chain: Chain, accounts: Map<string, Account>) {
@@ -196,7 +196,7 @@ Clarinet.test({
         ])
 
         const cancelledCampaign = block2.receipts[0].result;
-        cancelledCampaign.expectErr();
+        cancelledCampaign.expectErr().expectUint(106);
     },
 });
 
@@ -217,7 +217,7 @@ Clarinet.test({
         ])
 
         const cancelledCampaign = block2.receipts[0].result;
-        cancelledCampaign.expectErr();
+        cancelledCampaign.expectErr().expectUint(107);
     },
 });
 
@@ -247,7 +247,6 @@ Clarinet.test({
         );
 
         const expectedCampaign = updatedCampaign.result;
-        console.log(expectedCampaign)
         expectedCampaign.expectOk();
         assertEquals(expectedCampaign, '(ok {campaignOwner: ST1SJ3DTE5DN7X54YDH5D64R3BCB6A2AG2ZQ8YPD5, claimed: false, description: 0x4e6577206465736372697074696f6e, endsAt: u100, fundGoal: u10000, link: u"https://newexample.org", pledgedAmount: u0, pledgedCount: u0, startsAt: u2, targetReached: false, targetReachedBy: u0, title: u"New Title"})');
     },
@@ -273,7 +272,7 @@ Clarinet.test({
 
         const expectedCampaign = block2.receipts[0].result
 
-        expectedCampaign.expectErr();
+        expectedCampaign.expectErr().expectUint(107);
     },
 });
 
@@ -296,7 +295,7 @@ Clarinet.test({
 
         const expectedCampaign = block2.receipts[0].result
 
-        expectedCampaign.expectErr();
+        expectedCampaign.expectErr().expectUint(109);
     },
 });
 
@@ -359,7 +358,7 @@ Clarinet.test({
 
         const claimedCampaignBlock = block2.receipts[0].result
 
-        claimedCampaignBlock.expectErr();
+        claimedCampaignBlock.expectErr().expectUint(117);
 
         const claimedCampaign = chain.callReadOnlyFn(
             'clearfund',
@@ -539,7 +538,7 @@ Clarinet.test({
 });
 
 Clarinet.test({
-    name: "pledge: the pledged mount should should reflect the correct investments by user in investment map ",
+    name: "pledge: the pledged mount should reflect the correct investments by user in investment map",
     async fn(chain: Chain, accounts: Map<string, Account>) {
         const deployer = accounts.get("deployer")!.address
         const wallet1 = accounts.get("wallet_1")!.address
@@ -740,8 +739,15 @@ Clarinet.test({
         const wallet2 = accounts.get("wallet_2")!.address
 
         chain.mineBlock([ launch(wallet1) ])
+
+        // pledge before campaign ends
+        chain.mineEmptyBlockUntil(40)
+        chain.mineBlock([ pledge(wallet2) ])
+
+        // attempt to unpledge after campaign ends
         chain.mineEmptyBlockUntil(60)
-        const block = chain.mineBlock([ pledge(wallet2), unpledge(wallet2) ])
+        const block = chain.mineBlock([ unpledge(wallet2) ])
+
         block.receipts[0].result.expectErr().expectUint(109)
     },
 });
@@ -844,7 +850,7 @@ Clarinet.test({
 
         chain.mineBlock([ refund(wallet2) ])
 
-        const investment = getInvestment(chain, deployer)
+        const investment = getInvestment(chain, wallet2)
         investment.result.expectOk().expectNone()
     },
 });
@@ -907,5 +913,35 @@ Clarinet.test({
 
         const block = chain.mineBlock([ refund(wallet2) ])
         block.receipts[0].result.expectErr().expectUint(115)
+    },
+});
+
+// Additional test to make sure that funds are transferred when claiming
+Clarinet.test({
+    name: "claim: funds are transferred to the campaign owner when claimed",
+    async fn(chain: Chain, accounts: Map<string, Account>) {
+        const deployer = accounts.get("deployer")!.address
+        const wallet1 = accounts.get("wallet_1")!.address
+        const wallet2 = accounts.get("wallet_2")!.address
+        const wallet3 = accounts.get("wallet_3")!.address
+        const originalOwnerSTX = chain.getAssetsMaps().assets["STX"][wallet1]
+        const pledgedSTX = 20000
+
+        chain.mineBlock([ launch(wallet1) ])
+        chain.mineEmptyBlockUntil(20)
+        chain.mineBlock([
+            pledgeAmountGreaterThanGoal(wallet2),
+            pledgeAmountGreaterThanGoal(wallet3)
+        ])
+        chain.mineBlock([
+            Tx.contractCall('clearfund', 'claim', [types.uint(1)], wallet1)
+        ])
+
+        const assetsSTX = chain.getAssetsMaps().assets["STX"]
+        const contractSTX = assetsSTX[`${deployer}.clearfund`]
+        const ownerSTX = assetsSTX[wallet1]
+
+        assertEquals(contractSTX, 0)
+        assertEquals(ownerSTX, originalOwnerSTX + pledgedSTX * 2)
     },
 });
