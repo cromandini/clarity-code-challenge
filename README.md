@@ -1,3 +1,8 @@
+# Fork Notes
+To complete the contracts I've used `clarinet@v1.0.6`, to match the version in the unit tests.
+
+There's a branch `with-improved-tests` where I made a few small updates to `clearfund_test.ts`, like asserting against error codes and also added an extra test to make sure that funds are transferred to the campaign owner when claimed.
+
 # Clarity Code Challenge
 Welcome to the Clarity Skills Assessment Code Challenge. This repo is a Clarinet project that has a complete test suite, but with empty contracts. Your job is to complete the contracts in order to get all tests to pass.
 
